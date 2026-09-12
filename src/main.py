@@ -1,11 +1,15 @@
 from fastapi import FastAPI
 
+from src.accounts.router import router as accounts_router
+
 
 app = FastAPI(
     title="Online Cinema API",
     description="API for the Online Cinema project",
     version="0.1.0",
 )
+
+app.include_router(accounts_router)
 
 
 @app.get(

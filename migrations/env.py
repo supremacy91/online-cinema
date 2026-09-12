@@ -4,7 +4,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-
+from src.accounts import models  # noqa: F401
 from src.config.settings import settings
 from src.database.base import Base
 
