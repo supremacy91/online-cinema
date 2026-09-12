@@ -44,3 +44,11 @@ class UserResponseSchema(BaseModel):
     model_config = {
         "from_attributes": True,
     }
+
+
+class AccountActivationSchema(BaseModel):
+    token: str
+
+
+class ActivationResendSchema(BaseModel):
+    email: EmailStr
