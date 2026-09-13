@@ -2,8 +2,11 @@ from datetime import datetime, timedelta, timezone
 from secrets import token_urlsafe
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.accounts.models import ActivationToken, User
+from src.accounts.models import (
+    ActivationToken,
+    RefreshToken,
+    User,
+)
 
 
 ACTIVATION_TOKEN_LIFETIME_HOURS = 24
@@ -42,3 +45,21 @@ async def recreate_activation_token(
         db=db,
         user=user,
     )
+
+
+async def save_refresh_token(
+    db: AsyncSession,
+    user: User,
+    token: str,
+    expires_at: datetime,
+) -> RefreshToken:
+    refresh_token = RefreshToken(
+        token=token,
+        user_id=user.id,
+        expires_at=expires_at,
+    )
+
+    db.add(refresh_token)
+    await db.flush()
+
+    return refresh_token

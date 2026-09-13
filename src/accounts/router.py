@@ -1,23 +1,30 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.accounts.services import (
-    create_activation_token,
-    recreate_activation_token,
-)
 from datetime import datetime, timezone
 
 from src.accounts.models import ActivationToken, User
 from src.accounts.schemas import (
     AccountActivationSchema,
+    ActivationResendSchema,
+    LoginSchema,
+    TokenResponseSchema,
     UserRegisterSchema,
     UserResponseSchema,
-    ActivationResendSchema,
 )
 
-from src.accounts.security import hash_password
+from src.accounts.security import (
+    create_access_token,
+    create_refresh_token,
+    hash_password,
+    verify_password,
+)
 from src.database.session import get_db
-
+from src.accounts.services import (
+    create_activation_token,
+    recreate_activation_token,
+    save_refresh_token,
+)
 
 router = APIRouter(
     prefix="/accounts",
@@ -152,3 +159,62 @@ async def resend_activation(
     return {
         "message": "Activation token has been resent.",
     }
+
+
+@router.post(
+    "/login",
+    response_model=TokenResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def login_user(
+    data: LoginSchema,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponseSchema:
+    result = await db.execute(
+        select(User).where(
+            User.email == data.email,
+        )
+    )
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+        )
+
+    if not verify_password(
+        data.password,
+        user.password_hash,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is not activated.",
+        )
+
+    access_token = create_access_token(user.id)
+
+    refresh_token, expires_at = create_refresh_token(
+        user.id,
+    )
+
+    await save_refresh_token(
+        db=db,
+        user=user,
+        token=refresh_token,
+        expires_at=expires_at,
+    )
+
+    await db.commit()
+
+    return TokenResponseSchema(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+    )
