@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
-
+from typing import Any
 import jwt
 from pwdlib import PasswordHash
 
@@ -74,3 +74,13 @@ def create_refresh_token(
     )
 
     return token, expires_at
+
+
+def decode_token(
+    token: str,
+) -> dict[str, Any]:
+    return jwt.decode(
+        token,
+        settings.jwt_secret_key,
+        algorithms=[settings.jwt_algorithm],
+    )

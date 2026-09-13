@@ -2,12 +2,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
+import jwt
 
-from src.accounts.models import ActivationToken, User
+from src.accounts.models import (
+    ActivationToken,
+    RefreshToken,
+    User,
+)
 from src.accounts.schemas import (
+    AccessTokenResponseSchema,
     AccountActivationSchema,
     ActivationResendSchema,
     LoginSchema,
+    RefreshTokenSchema,
     TokenResponseSchema,
     UserRegisterSchema,
     UserResponseSchema,
@@ -16,6 +23,7 @@ from src.accounts.schemas import (
 from src.accounts.security import (
     create_access_token,
     create_refresh_token,
+    decode_token,
     hash_password,
     verify_password,
 )
@@ -218,3 +226,106 @@ async def login_user(
         refresh_token=refresh_token,
         token_type="bearer",
     )
+
+
+@router.post(
+    "/refresh",
+    response_model=AccessTokenResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def refresh_access_token(
+    data: RefreshTokenSchema,
+    db: AsyncSession = Depends(get_db),
+) -> AccessTokenResponseSchema:
+    result = await db.execute(
+        select(RefreshToken).where(
+            RefreshToken.token == data.refresh_token,
+        )
+    )
+    stored_token = result.scalar_one_or_none()
+
+    if stored_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token.",
+        )
+
+    if stored_token.expires_at < datetime.now(timezone.utc):
+        await db.delete(stored_token)
+        await db.commit()
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has expired.",
+        )
+
+    try:
+        payload = decode_token(data.refresh_token)
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token.",
+        )
+
+    if payload.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token.",
+        )
+
+    user_id = payload.get("sub")
+
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token.",
+        )
+
+    user_result = await db.execute(
+        select(User).where(
+            User.id == user_id,
+        )
+    )
+    user = user_result.scalar_one_or_none()
+
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token.",
+        )
+
+    access_token = create_access_token(user.id)
+
+    return AccessTokenResponseSchema(
+        access_token=access_token,
+        token_type="bearer",
+    )
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_200_OK,
+)
+async def logout_user(
+    data: RefreshTokenSchema,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    result = await db.execute(
+        select(RefreshToken).where(
+            RefreshToken.token == data.refresh_token,
+        )
+    )
+    stored_token = result.scalar_one_or_none()
+
+    if stored_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token.",
+        )
+
+    await db.delete(stored_token)
+    await db.commit()
+
+    return {
+        "message": "Logged out successfully.",
+    }

@@ -67,3 +67,8 @@ class TokenResponseSchema(BaseModel):
 
 class RefreshTokenSchema(BaseModel):
     refresh_token: str
+
+
+class AccessTokenResponseSchema(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
