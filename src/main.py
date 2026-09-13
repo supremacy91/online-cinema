@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from src.accounts.router import router as accounts_router
+from src.movies.router import router as movies_router
 
 
 app = FastAPI(
@@ -10,6 +11,7 @@ app = FastAPI(
 )
 
 app.include_router(accounts_router)
+app.include_router(movies_router)
 
 
 @app.get(
