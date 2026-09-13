@@ -4,11 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 import jwt
 
-from src.accounts.models import (
-    ActivationToken,
-    RefreshToken,
-    User,
-)
 from src.accounts.schemas import (
     AccessTokenResponseSchema,
     AccountActivationSchema,
@@ -18,20 +13,28 @@ from src.accounts.schemas import (
     TokenResponseSchema,
     UserRegisterSchema,
     UserResponseSchema,
+    PasswordResetConfirmSchema,
+    PasswordResetRequestSchema,
 )
-
+from src.accounts.models import (
+    ActivationToken,
+    PasswordResetToken,
+    RefreshToken,
+    User,
+)
 from src.accounts.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
-    hash_password,
     verify_password,
+    hash_password,
 )
 from src.database.session import get_db
 from src.accounts.services import (
     create_activation_token,
     recreate_activation_token,
     save_refresh_token,
+    create_password_reset_token,
 )
 
 router = APIRouter(
@@ -328,4 +331,86 @@ async def logout_user(
 
     return {
         "message": "Logged out successfully.",
+    }
+
+
+@router.post(
+    "/password-reset/request",
+    status_code=status.HTTP_200_OK,
+)
+async def request_password_reset(
+    data: PasswordResetRequestSchema,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    result = await db.execute(
+        select(User).where(
+            User.email == data.email,
+        )
+    )
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+
+    await create_password_reset_token(
+        db=db,
+        user=user,
+    )
+
+    await db.commit()
+
+    return {
+        "message": "Password reset token has been created.",
+    }
+
+
+@router.post(
+    "/password-reset/confirm",
+    status_code=status.HTTP_200_OK,
+)
+async def confirm_password_reset(
+    data: PasswordResetConfirmSchema,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    result = await db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.token == data.token,
+        )
+    )
+    reset_token = result.scalar_one_or_none()
+
+    if reset_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid password reset token.",
+        )
+
+    if reset_token.expires_at < datetime.now(timezone.utc):
+        await db.delete(reset_token)
+        await db.commit()
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password reset token has expired.",
+        )
+
+    user_result = await db.execute(
+        select(User).where(
+            User.id == reset_token.user_id,
+        )
+    )
+    user = user_result.scalar_one()
+
+    user.password_hash = hash_password(
+        data.new_password,
+    )
+
+    await db.delete(reset_token)
+    await db.commit()
+
+    return {
+        "message": "Password has been reset successfully.",
     }

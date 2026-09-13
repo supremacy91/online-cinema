@@ -72,3 +72,37 @@ class RefreshTokenSchema(BaseModel):
 class AccessTokenResponseSchema(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class PasswordResetRequestSchema(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmSchema(BaseModel):
+    token: str
+    new_password: str = Field(
+        min_length=8,
+        max_length=128,
+    )
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, password: str) -> str:
+        if not any(char.isupper() for char in password):
+            raise ValueError(
+                "Password must contain at least one uppercase letter."
+            )
+        if not any(char.islower() for char in password):
+            raise ValueError(
+                "Password must contain at least one lowercase letter."
+            )
+        if not any(char.isdigit() for char in password):
+            raise ValueError(
+                "Password must contain at least one digit."
+            )
+        if not any(not char.isalnum() for char in password):
+            raise ValueError(
+                "Password must contain at least one special character."
+            )
+
+        return password
