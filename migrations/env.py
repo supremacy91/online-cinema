@@ -8,7 +8,7 @@ from src.accounts import models as accounts_models  # noqa: F401
 from src.config.settings import settings
 from src.database.base import Base
 from src.movies import models as movies_models  # noqa: F401
-
+from src.favorites import models as favorites_models  # noqa: F401
 
 config = context.config
 
