@@ -92,6 +92,15 @@ class Movie(Base):
         nullable=True,
     )
 
+    price: Mapped[Decimal] = mapped_column(
+        Numeric(
+            precision=10,
+            scale=2,
+        ),
+        nullable=False,
+        default=Decimal("0.00"),
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

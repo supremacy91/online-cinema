@@ -29,6 +29,11 @@ class MovieCreateSchema(BaseModel):
         max_length=255,
     )
 
+    price: Decimal = Field(
+        ge=0,
+        decimal_places=2,
+    )
+
     description: str = Field(
         min_length=1,
     )
@@ -57,8 +62,8 @@ class MovieResponseSchema(BaseModel):
     release_date: date
     duration_minutes: int
     imdb_rating: Decimal | None
+    price: Decimal
     created_at: datetime
-
     genre: GenreResponseSchema
     certification: CertificationResponseSchema | None
 
