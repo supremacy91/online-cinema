@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
@@ -11,13 +12,16 @@ async def test_register_success(
     client,
     db_session,
 ) -> None:
-    response = await client.post(
-        "/accounts/register",
-        json={
-            "email": "user@example.com",
-            "password": "Password123!",
-        },
-    )
+    with patch(
+        "src.accounts.router.send_activation_email.delay"
+    ) as mocked_email:
+        response = await client.post(
+            "/accounts/register",
+            json={
+                "email": "user@example.com",
+                "password": "Password123!",
+            },
+        )
 
     assert response.status_code == 201
 
@@ -48,6 +52,13 @@ async def test_register_success(
     assert activation_token.expires_at > datetime.now(
         timezone.utc
     )
+
+    mocked_email.assert_called_once()
+
+    call = mocked_email.call_args
+
+    assert call.args[0] == "user@example.com"
+    assert call.args[1] == activation_token.token
 
 
 @pytest.mark.asyncio
@@ -254,12 +265,15 @@ async def test_resend_activation_success(
     )
     old_token = token_result.scalar_one().token
 
-    response = await client.post(
-        "/accounts/activation/resend",
-        json={
-            "email": "resend@example.com",
-        },
-    )
+    with patch(
+        "src.accounts.router.send_activation_email.delay"
+    ) as mocked_email:
+        response = await client.post(
+            "/accounts/activation/resend",
+            json={
+                "email": "resend@example.com",
+            },
+        )
 
     assert response.status_code == 200
     assert response.json() == {
@@ -279,6 +293,13 @@ async def test_resend_activation_success(
     assert new_token.expires_at > datetime.now(
         timezone.utc
     )
+
+    mocked_email.assert_called_once()
+
+    call = mocked_email.call_args
+
+    assert call.args[0] == "resend@example.com"
+    assert call.args[1] == new_token.token
 
 
 @pytest.mark.asyncio

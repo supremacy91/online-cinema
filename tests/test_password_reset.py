@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
@@ -21,12 +22,15 @@ async def test_password_reset_request_success(
     db_session.add(user)
     await db_session.commit()
 
-    response = await client.post(
-        "/accounts/password-reset/request",
-        json={
-            "email": "reset-request@example.com",
-        },
-    )
+    with patch(
+        "src.accounts.router.send_password_reset_email.delay"
+    ) as mocked_email:
+        response = await client.post(
+            "/accounts/password-reset/request",
+            json={
+                "email": "reset-request@example.com",
+            },
+        )
 
     assert response.status_code == 200
     assert response.json() == {
@@ -41,6 +45,13 @@ async def test_password_reset_request_success(
     reset_token = result.scalar_one_or_none()
 
     assert reset_token is not None
+
+    mocked_email.assert_called_once()
+
+    call = mocked_email.call_args
+
+    assert call.args[0] == "reset-request@example.com"
+    assert call.args[1] == reset_token.token
 
 
 @pytest.mark.asyncio
