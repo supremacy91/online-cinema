@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from secrets import token_urlsafe
+
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.accounts.models import (
     ActivationToken,
     PasswordResetToken,
@@ -74,6 +76,21 @@ async def recreate_activation_token(
         db=db,
         user=user,
     )
+
+
+async def delete_expired_activation_tokens(
+    db: AsyncSession,
+) -> int:
+    result = await db.execute(
+        delete(ActivationToken).where(
+            ActivationToken.expires_at
+            < datetime.now(timezone.utc)
+        )
+    )
+
+    await db.commit()
+
+    return result.rowcount
 
 
 async def save_refresh_token(

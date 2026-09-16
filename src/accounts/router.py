@@ -2,6 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
+from src.accounts.tasks import (
+    send_activation_email,
+    send_password_reset_email,
+)
+
 import jwt
 
 from src.accounts.schemas import (
@@ -75,13 +80,18 @@ async def register_user(
 
     await db.flush()
 
-    await create_activation_token(
+    activation_token = await create_activation_token(
         db=db,
         user=user,
     )
 
     await db.commit()
     await db.refresh(user)
+
+    send_activation_email.delay(
+        user.email,
+        activation_token.token,
+    )
 
     return user
 
@@ -160,12 +170,17 @@ async def resend_activation(
             detail="Account is already active.",
         )
 
-    await recreate_activation_token(
+    activation_token = await recreate_activation_token(
         db=db,
         user=user,
     )
 
     await db.commit()
+
+    send_activation_email.delay(
+        user.email,
+        activation_token.token,
+    )
 
     return {
         "message": "Activation token has been resent.",
@@ -355,12 +370,17 @@ async def request_password_reset(
             detail="User not found.",
         )
 
-    await create_password_reset_token(
+    reset_token = await create_password_reset_token(
         db=db,
         user=user,
     )
 
     await db.commit()
+
+    send_password_reset_email.delay(
+        user.email,
+        reset_token.token,
+    )
 
     return {
         "message": "Password reset token has been created.",
