@@ -22,6 +22,26 @@ router = APIRouter(
 @router.post(
     "/{movie_id}",
     status_code=status.HTTP_201_CREATED,
+    summary="Add a movie to favorites",
+    description=(
+        "Add a movie to the authenticated user's favorites. "
+        "The movie must exist and must not already be present "
+        "in the user's favorites."
+    ),
+    responses={
+        401: {
+            "description": "Authentication is required.",
+        },
+        404: {
+            "description": "Movie not found.",
+        },
+        409: {
+            "description": "Movie is already in favorites.",
+        },
+        422: {
+            "description": "Invalid movie UUID.",
+        },
+    },
 )
 async def add_favorite(
     movie_id: UUID,
@@ -73,6 +93,17 @@ async def add_favorite(
 @router.get(
     "",
     response_model=list[MovieResponseSchema],
+    summary="Get favorite movies",
+    description=(
+        "Return all movies in the authenticated user's favorites. "
+        "Movies are ordered by the time they were added, "
+        "with the most recently added movies first."
+    ),
+    responses={
+        401: {
+            "description": "Authentication is required.",
+        },
+    },
 )
 async def get_favorites(
     current_user: User = Depends(get_current_user),
@@ -104,6 +135,22 @@ async def get_favorites(
 @router.delete(
     "/{movie_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a movie from favorites",
+    description=(
+        "Remove a movie from the authenticated user's favorites "
+        "using the movie UUID."
+    ),
+    responses={
+        401: {
+            "description": "Authentication is required.",
+        },
+        404: {
+            "description": "Favorite not found.",
+        },
+        422: {
+            "description": "Invalid movie UUID.",
+        },
+    },
 )
 async def remove_favorite(
     movie_id: UUID,

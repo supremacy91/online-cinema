@@ -22,6 +22,26 @@ router = APIRouter(
 @router.post(
     "/{movie_id}",
     status_code=status.HTTP_201_CREATED,
+    summary="Add a movie to the cart",
+    description=(
+        "Add a movie to the authenticated user's shopping cart. "
+        "The movie must exist and must not already be present "
+        "in the cart."
+    ),
+    responses={
+        401: {
+            "description": "Authentication is required.",
+        },
+        404: {
+            "description": "Movie not found.",
+        },
+        409: {
+            "description": "Movie is already in the cart.",
+        },
+        422: {
+            "description": "Invalid movie UUID.",
+        },
+    },
 )
 async def add_to_cart(
     movie_id: UUID,
@@ -73,6 +93,17 @@ async def add_to_cart(
 @router.get(
     "",
     response_model=list[MovieResponseSchema],
+    summary="Get shopping cart",
+    description=(
+        "Return all movies currently stored in the authenticated "
+        "user's shopping cart. Movies are ordered by the time "
+        "they were added, with the most recently added movies first."
+    ),
+    responses={
+        401: {
+            "description": "Authentication is required.",
+        },
+    },
 )
 async def get_cart(
     current_user: User = Depends(get_current_user),
@@ -104,6 +135,22 @@ async def get_cart(
 @router.delete(
     "/{movie_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a movie from the cart",
+    description=(
+        "Remove a specific movie from the authenticated user's "
+        "shopping cart using the movie UUID."
+    ),
+    responses={
+        401: {
+            "description": "Authentication is required.",
+        },
+        404: {
+            "description": "Cart item not found.",
+        },
+        422: {
+            "description": "Invalid movie UUID.",
+        },
+    },
 )
 async def remove_from_cart(
     movie_id: UUID,
@@ -138,6 +185,16 @@ async def remove_from_cart(
 @router.delete(
     "",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="Clear the shopping cart",
+    description=(
+        "Remove all movies from the authenticated user's "
+        "shopping cart."
+    ),
+    responses={
+        401: {
+            "description": "Authentication is required.",
+        },
+    },
 )
 async def clear_cart(
     current_user: User = Depends(get_current_user),
