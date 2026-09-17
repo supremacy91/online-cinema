@@ -1,46 +1,47 @@
+from datetime import datetime, timezone
+
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timezone
-from src.accounts.tasks import (
-    send_activation_email,
-    send_password_reset_email,
-)
 
-import jwt
-
-from src.accounts.schemas import (
-    AccessTokenResponseSchema,
-    AccountActivationSchema,
-    ActivationResendSchema,
-    LoginSchema,
-    RefreshTokenSchema,
-    TokenResponseSchema,
-    UserRegisterSchema,
-    UserResponseSchema,
-    PasswordResetConfirmSchema,
-    PasswordResetRequestSchema,
-)
 from src.accounts.models import (
     ActivationToken,
     PasswordResetToken,
     RefreshToken,
     User,
 )
+from src.accounts.schemas import (
+    AccessTokenResponseSchema,
+    AccountActivationSchema,
+    ActivationResendSchema,
+    LoginSchema,
+    PasswordResetConfirmSchema,
+    PasswordResetRequestSchema,
+    RefreshTokenSchema,
+    TokenResponseSchema,
+    UserRegisterSchema,
+    UserResponseSchema,
+)
 from src.accounts.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
-    verify_password,
     hash_password,
+    verify_password,
 )
-from src.database.session import get_db
 from src.accounts.services import (
     create_activation_token,
+    create_password_reset_token,
     recreate_activation_token,
     save_refresh_token,
-    create_password_reset_token,
 )
+from src.accounts.tasks import (
+    send_activation_email,
+    send_password_reset_email,
+)
+from src.database.session import get_db
+
 
 router = APIRouter(
     prefix="/accounts",
@@ -52,6 +53,20 @@ router = APIRouter(
     "/register",
     response_model=UserResponseSchema,
     status_code=status.HTTP_201_CREATED,
+    summary="Register a new user",
+    description=(
+        "Create a new inactive user account. "
+        "An activation token valid for 24 hours is generated "
+        "and an activation email is queued for asynchronous delivery."
+    ),
+    responses={
+        409: {
+            "description": "A user with this email already exists.",
+        },
+        422: {
+            "description": "Invalid registration data.",
+        },
+    },
 )
 async def register_user(
     data: UserRegisterSchema,
@@ -99,6 +114,20 @@ async def register_user(
 @router.post(
     "/activate",
     status_code=status.HTTP_200_OK,
+    summary="Activate a user account",
+    description=(
+        "Activate a previously registered account using "
+        "the activation token sent by email. "
+        "The token is deleted after successful activation."
+    ),
+    responses={
+        400: {
+            "description": "The activation token is invalid or expired.",
+        },
+        422: {
+            "description": "Invalid request data.",
+        },
+    },
 )
 async def activate_account(
     data: AccountActivationSchema,
@@ -146,6 +175,24 @@ async def activate_account(
 @router.post(
     "/activation/resend",
     status_code=status.HTTP_200_OK,
+    summary="Resend an account activation email",
+    description=(
+        "Generate a new activation token for an inactive account. "
+        "Any previous activation token for the user is replaced. "
+        "The new token is valid for 24 hours and the activation email "
+        "is queued for asynchronous delivery."
+    ),
+    responses={
+        400: {
+            "description": "The account is already active.",
+        },
+        404: {
+            "description": "User not found.",
+        },
+        422: {
+            "description": "Invalid request data.",
+        },
+    },
 )
 async def resend_activation(
     data: ActivationResendSchema,
@@ -191,6 +238,23 @@ async def resend_activation(
     "/login",
     response_model=TokenResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Log in to an account",
+    description=(
+        "Authenticate an active user using email and password. "
+        "Returns a short-lived access token and a refresh token. "
+        "The refresh token is stored in the database."
+    ),
+    responses={
+        401: {
+            "description": "Invalid email or password.",
+        },
+        403: {
+            "description": "The account has not been activated.",
+        },
+        422: {
+            "description": "Invalid login data.",
+        },
+    },
 )
 async def login_user(
     data: LoginSchema,
@@ -250,6 +314,20 @@ async def login_user(
     "/refresh",
     response_model=AccessTokenResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Refresh an access token",
+    description=(
+        "Issue a new access token using a valid refresh token. "
+        "The refresh token must exist in the database, must not "
+        "be expired, and must contain a valid JWT refresh payload."
+    ),
+    responses={
+        401: {
+            "description": "The refresh token is invalid or expired.",
+        },
+        422: {
+            "description": "Invalid request data.",
+        },
+    },
 )
 async def refresh_access_token(
     data: RefreshTokenSchema,
@@ -323,6 +401,20 @@ async def refresh_access_token(
 @router.post(
     "/logout",
     status_code=status.HTTP_200_OK,
+    summary="Log out of an account",
+    description=(
+        "Invalidate the supplied refresh token by deleting it "
+        "from the database. The token can no longer be used "
+        "to obtain new access tokens."
+    ),
+    responses={
+        401: {
+            "description": "Invalid refresh token.",
+        },
+        422: {
+            "description": "Invalid request data.",
+        },
+    },
 )
 async def logout_user(
     data: RefreshTokenSchema,
@@ -352,6 +444,20 @@ async def logout_user(
 @router.post(
     "/password-reset/request",
     status_code=status.HTTP_200_OK,
+    summary="Request a password reset",
+    description=(
+        "Create a password reset token for an existing user. "
+        "Any previous reset token is replaced and a password reset "
+        "email is queued for asynchronous delivery."
+    ),
+    responses={
+        404: {
+            "description": "User not found.",
+        },
+        422: {
+            "description": "Invalid request data.",
+        },
+    },
 )
 async def request_password_reset(
     data: PasswordResetRequestSchema,
@@ -390,6 +496,20 @@ async def request_password_reset(
 @router.post(
     "/password-reset/confirm",
     status_code=status.HTTP_200_OK,
+    summary="Confirm a password reset",
+    description=(
+        "Set a new password using a valid password reset token. "
+        "The new password must satisfy the password complexity rules. "
+        "The reset token is deleted after the password is changed."
+    ),
+    responses={
+        400: {
+            "description": "The password reset token is invalid or expired.",
+        },
+        422: {
+            "description": "The new password or request data is invalid.",
+        },
+    },
 )
 async def confirm_password_reset(
     data: PasswordResetConfirmSchema,

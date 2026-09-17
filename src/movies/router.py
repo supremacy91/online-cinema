@@ -20,39 +20,82 @@ router = APIRouter(
 @router.get(
     "",
     response_model=list[MovieResponseSchema],
+    summary="Get movie catalog",
+    description=(
+        "Return a paginated list of movies. "
+        "Movies can be searched by title, filtered by genre, "
+        "certification and release year, and sorted by supported fields."
+    ),
+    responses={
+        400: {
+            "description": "Invalid sorting field.",
+        },
+        422: {
+            "description": "Invalid query parameters.",
+        },
+    },
 )
 async def get_movies(
     page: int = Query(
         default=1,
         ge=1,
+        description="Page number. The first page is 1.",
+        examples=[1],
     ),
     page_size: int = Query(
         default=10,
         ge=1,
         le=100,
+        description=(
+            "Number of movies returned per page. "
+            "Allowed range: 1 to 100."
+        ),
+        examples=[10],
     ),
     search: str | None = Query(
         default=None,
         min_length=1,
+        description=(
+            "Search movies by title. "
+            "The search is case-insensitive and supports partial matches."
+        ),
+        examples=["Matrix"],
     ),
     genre_id: int | None = Query(
         default=None,
         ge=1,
+        description="Filter movies by genre ID.",
+        examples=[1],
     ),
     certification_id: int | None = Query(
         default=None,
         ge=1,
+        description="Filter movies by certification ID.",
+        examples=[1],
     ),
     release_year: int | None = Query(
         default=None,
         ge=1888,
+        description="Filter movies by release year.",
+        examples=[1999],
     ),
     sort_by: str = Query(
         default="title",
+        description=(
+            "Field used to sort movies. "
+            "Supported values: title, release_date, "
+            "imdb_rating, duration_minutes."
+        ),
+        examples=["title"],
     ),
     order: str = Query(
         default="asc",
         pattern="^(asc|desc)$",
+        description=(
+            "Sorting direction. "
+            "Supported values: asc or desc."
+        ),
+        examples=["asc"],
     ),
     db: AsyncSession = Depends(get_db),
 ) -> list[Movie]:
@@ -139,6 +182,19 @@ async def get_movies(
 @router.get(
     "/{movie_id}",
     response_model=MovieResponseSchema,
+    summary="Get movie details",
+    description=(
+        "Return detailed information about a single movie "
+        "identified by its UUID."
+    ),
+    responses={
+        404: {
+            "description": "Movie not found.",
+        },
+        422: {
+            "description": "Invalid movie UUID.",
+        },
+    },
 )
 async def get_movie(
     movie_id: UUID,
