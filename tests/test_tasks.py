@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import select
@@ -10,6 +10,8 @@ from src.accounts.services import (
     delete_expired_activation_tokens,
 )
 from src.accounts.tasks import (
+    _cleanup_expired_activation_tokens,
+    cleanup_expired_activation_tokens,
     send_activation_email,
     send_password_reset_email,
 )
@@ -133,3 +135,61 @@ async def test_delete_expired_activation_tokens(
 
     assert remaining_token is not None
     assert remaining_token.token == "valid-cleanup-token"
+
+
+@pytest.mark.asyncio
+async def test_cleanup_expired_activation_tokens_async() -> None:
+    mocked_engine = MagicMock()
+    mocked_engine.dispose = AsyncMock()
+
+    mocked_db = MagicMock()
+
+    session_context = AsyncMock()
+    session_context.__aenter__.return_value = mocked_db
+
+    session_factory = MagicMock(
+        return_value=session_context,
+    )
+
+    with (
+        patch(
+            "src.accounts.tasks.create_async_engine",
+            return_value=mocked_engine,
+        ) as mocked_create_engine,
+        patch(
+            "src.accounts.tasks.async_sessionmaker",
+            return_value=session_factory,
+        ) as mocked_sessionmaker,
+        patch(
+            "src.accounts.tasks."
+            "delete_expired_activation_tokens",
+            new=AsyncMock(return_value=3),
+        ) as mocked_delete,
+    ):
+        result = await _cleanup_expired_activation_tokens()
+
+    assert result == 3
+
+    mocked_create_engine.assert_called_once()
+
+    mocked_sessionmaker.assert_called_once_with(
+        bind=mocked_engine,
+        expire_on_commit=False,
+    )
+
+    mocked_delete.assert_awaited_once_with(
+        db=mocked_db,
+    )
+
+    mocked_engine.dispose.assert_awaited_once()
+
+
+def test_cleanup_expired_activation_tokens_task() -> None:
+    with patch(
+        "src.accounts.tasks."
+        "_cleanup_expired_activation_tokens",
+        new=AsyncMock(return_value=2),
+    ):
+        result = cleanup_expired_activation_tokens.run()
+
+    assert result == 2
