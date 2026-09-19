@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+
+        env:
+          POSTGRES_USER: cinema
+          POSTGRES_PASSWORD: cinema_password
+          POSTGRES_DB: online_cinema
+
+        ports:
+          - 5432:5432
+
+        options: >-
+          --health-cmd "pg_isready -U cinema -d online_cinema"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+
+        ports:
+          - 6379:6379
+
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_USER: cinema
+      POSTGRES_PASSWORD: cinema_password
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: online_cinema
+
+      JWT_SECRET_KEY: ci-test-secret-key
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 15
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/1
+
+      SMTP_HOST: localhost
+      SMTP_PORT: 1025
+      EMAIL_FROM: noreply@online-cinema.local
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pip install poetry==2.4.3
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-ansi
+
+      - name: Create test database
+        env:
+          PGPASSWORD: cinema_password
+        run: |
+          psql \
+            -h localhost \
+            -U cinema \
+            -d online_cinema \
+            -c "CREATE DATABASE online_cinema_test;"
+
+      - name: Run flake8
+        run: poetry run flake8 src tests migrations
+
+      - name: Run tests with coverage
+        run: |
+          poetry run pytest \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml
