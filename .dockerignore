@@ -13,7 +13,6 @@ venv/
 # Tests / coverage
 .pytest_cache/
 .coverage
-coverage.xml
 htmlcov/
 
 # IDE
