@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from secrets import token_urlsafe
+from typing import Any, cast
 
 from sqlalchemy import delete
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.accounts.models import (
@@ -90,7 +92,12 @@ async def delete_expired_activation_tokens(
 
     await db.commit()
 
-    return result.rowcount
+    cursor_result = cast(
+        CursorResult[Any],
+        result,
+    )
+
+    return cursor_result.rowcount
 
 
 async def save_refresh_token(

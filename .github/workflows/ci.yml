@@ -91,9 +91,71 @@ jobs:
       - name: Run flake8
         run: poetry run flake8 src tests migrations
 
+      - name: Run mypy
+        run: poetry run mypy src
+
       - name: Run tests with coverage
         run: |
           poetry run pytest \
             --cov=src \
             --cov-report=term-missing \
             --cov-report=xml
+
+  deploy:
+    needs: lint-and-test
+
+    if: >
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure SSH
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ~/.ssh/ec2_key "$EC2_USER@$EC2_HOST" <<'EOF'
+            set -euo pipefail
+
+            cd /home/ubuntu/online-cinema
+
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
+
+            docker compose --env-file .env.docker build \
+              web \
+              celery_worker \
+              celery_beat
+
+            docker compose --env-file .env.docker up -d \
+              db \
+              redis \
+              mailpit \
+              minio
+
+            docker compose --env-file .env.docker run --rm \
+              web alembic upgrade head
+
+            docker compose --env-file .env.docker up -d
+
+            curl \
+              --fail \
+              --retry 10 \
+              --retry-delay 2 \
+              http://127.0.0.1:8000/health
+          EOF

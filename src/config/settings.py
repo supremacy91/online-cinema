@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     smtp_port: int = 1025
     email_from: str = "noreply@online-cinema.local"
 
+    docs_username: str = "admin"
+    docs_password: str = "admin"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -44,7 +47,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings()  # type: ignore[call-arg]
 
 
 settings = get_settings()
